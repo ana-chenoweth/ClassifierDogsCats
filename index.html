@@ -75,7 +75,7 @@
 
     (async() => {
       console.log("Cargando modelo...");
-      modelo = await tf.loadLayersModel("model.json");
+      modelo = await tf.loadLayersModel("modelo_correcto_tfjs/model.json");
       console.log("Modelo cargado");
     })();
 
@@ -146,7 +146,7 @@
         resample_single(canvas, 100, 100, otrocanvas);
 
         //Hacer la predicción
-        var ctx2 = otrocanvas.getContext("2d");
+        var ctx2 = otrocanvas.getContext("2d", { willReadFrequently: true });
         var imgData = ctx2.getImageData(0,0, 100, 100);
 
         var arr = [];
@@ -167,9 +167,19 @@
         }
 
         arr = [arr];
+        console.log("Primeros valores de arr:", arr[0][0].slice(0,10));
+
 
         var tensor = tf.tensor4d(arr);
-        var resultado = modelo.predict(tensor).dataSync();
+        console.log("Tensor shape:", tensor.shape);
+
+        var resultado = modelo.predict(tensor).dataSync()[0];  
+
+        console.log("Resultado del modelo:", resultado);
+
+        var out = modelo.predict(tensor).dataSync();
+        console.log("SALIDA COMPLETA:", out);
+
 
         var respuesta;
         if (resultado <= .5) {
@@ -178,6 +188,9 @@
           respuesta = "Perro";
         }
         document.getElementById("resultado").innerHTML = respuesta;
+
+        console.log("Respues del modelo:", respuesta);
+
 
       }
 
