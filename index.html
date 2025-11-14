@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Clasificador de Perros y Gatos</title>
 
-  <!-- Favicons (ya los tienes en el proyecto) -->
+  <!-- Favicons -->
   <img src="img/perro50x50.png">
   <img src="img/gato50x50.png">
-
 
   <!-- Bootstrap -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
@@ -27,28 +26,29 @@
     .bar > div { height:100%; width:0% }
   </style>
 </head>
-<body>
 
-  <!-- Header / Hero -->
+<body>
   <header class="py-3 text-center">
     <img src="img/garfield.png" alt="Logo" class="brand-logo d-block mx-auto mb-2" />
     <h1 class="fw-bold mb-1">Perros y Gatos</h1>
     <p class="text-secondary mb-2">Clasificador en el navegador con TensorFlow.js (cámara del celular)</p>
+
     <div class="d-flex gap-2 justify-content-center align-items-center mb-2">
       <span id="model-status" class="badge text-bg-warning badge-pulse">Cargando modelo…</span>
       <select id="model-select" class="form-select form-select-sm w-auto" onchange="cambiarModelo()">
-        <!-- Ajusta estas rutas a tus carpetas exportadas -->
-        <option value="web_model_cnn/model.json" selected>RegularNet</option>
-        <option value="web_model_dense/model.json">CNN (opcional)</option>
+        <option value="web_model_cnn/model.json" selected>Modelo CNN</option>
+        <option value="web_model_dense/model.json">Modelo Denso</option>
       </select>
     </div>
-    <small class="text-secondary">Sugerencia: usa <strong>https</strong> o <strong>localhost</strong> para permisos de cámara en móvil.</small>
+
+    <small class="text-secondary">
+      Sugerencia: usa <strong>https</strong> o <strong>localhost</strong> para permisos de cámara en móvil.
+    </small>
   </header>
 
   <main class="container py-4">
     <div class="row justify-content-center">
       <div class="col-12 col-md-6 text-center">
-        <!-- Video oculto: solo sirve de fuente para canvas -->
         <video id="video" playsinline autoplay muted style="width:1px;height:1px;position:absolute;left:-9999px;"></video>
 
         <div class="d-grid gap-2 d-md-flex justify-content-md-center mb-3">
@@ -79,7 +79,6 @@
           </div>
         </div>
 
-        <!-- Canvas pequeño para redimensionar si lo quieres usar -->
         <canvas id="tmp" width="100" height="100" style="display:none"></canvas>
       </div>
     </div>
@@ -93,40 +92,38 @@
   </footer>
 
   <!-- Bootstrap JS -->
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- TensorFlow.js actualizado -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-
-
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 
   <script>
     const tamano = 400;
-    const inputSize = 100; // debe coincidir con tu entrenamiento (100x100x1)
+    const inputSize = 100; // debe coincidir con el modelo (100x100x3)
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const tmp = document.getElementById('tmp');
     const modelSelect = document.getElementById('model-select');
     const modelStatus = document.getElementById('model-status');
 
     let currentStream = null;
-    let facingMode = 'user'; // 'environment' para trasera
+    let facingMode = 'user';
     let modelo = null;
     let corriendo = false;
 
-    // ======== Carga de modelo =========
+    // ======== CARGA DEL MODELO ========
     async function cargarModelo(ruta) {
       try {
         modelStatus.textContent = 'Cargando modelo…';
         modelStatus.className = 'badge text-bg-warning badge-pulse';
         modelo = await tf.loadLayersModel(ruta);
-        // Warmup
+
+        // "Calienta" el modelo (para evitar el primer lag)
         tf.tidy(() => {
-          const warm = tf.zeros([1, inputSize, inputSize, 1]);
+          const warm = tf.zeros([1, inputSize, inputSize, 3]);
           modelo.predict(warm);
         });
+
         modelStatus.textContent = 'Modelo listo';
         modelStatus.className = 'badge text-bg-success';
       } catch (e) {
@@ -142,7 +139,7 @@
       await cargarModelo(ruta);
     }
 
-    // ======== Cámara =========
+    // ======== CÁMARA ========
     async function iniciar() {
       try {
         if (currentStream) {
@@ -168,47 +165,33 @@
       await iniciar();
     }
 
-    // ======== Bucle de dibujo + predicción =========
-    async function loop() {
-      if (!corriendo) return;
-      // dibuja video en canvas de visualización
-      ctx.drawImage(video, 0, 0, tamano, tamano);
-
-      // predice (cada ~150ms)
-      predecir();
-
-      // anima ~50fps para la vista
-      setTimeout(loop, 20);
-    }
-
+    // ======== NORMALIZACIÓN RGB ========
     function normalizarTensorDesdeCanvas() {
-      // Crea tensor 100x100x1 normalizado [0,1] desde el canvas actual
+      // crea tensor 100x100x3 normalizado [0,1]
       return tf.tidy(() => {
         const t = tf.browser.fromPixels(canvas)           // [400,400,3]
           .resizeBilinear([inputSize, inputSize])        // [100,100,3]
-          .mean(2)                                       // [100,100]
           .toFloat()
-          .div(255.0)
-          .reshape([1, inputSize, inputSize, 1]);        // [1,100,100,1]
+          .div(255.0)                                    // Normaliza a [0,1]
+          .reshape([1, inputSize, inputSize, 3]);        // [1,100,100,3]
         return t;
       });
     }
 
+    // ======== PREDICCIÓN ========
     function predecir() {
       if (!modelo) return;
       const x = normalizarTensorDesdeCanvas();
       const out = modelo.predict(x);
-      // Soporta salida binaria [sigmoid] o 2 logits/softmax
+
       let probDog = null, probCat = null, label = '—';
 
       tf.tidy(() => {
         const data = out.dataSync();
-        if (out.shape[out.shape.length-1] === 1) {
-          // salida sigmoide: 1 neurona (asumimos >0.5 = Perro)
+        if (out.shape[out.shape.length - 1] === 1) {
           probDog = data[0];
           probCat = 1 - probDog;
-        } else if (out.shape[out.shape.length-1] === 2) {
-          // salida softmax: [perro, gato] o similar: ajusta si tu orden es distinto
+        } else if (out.shape[out.shape.length - 1] === 2) {
           probDog = data[0];
           probCat = data[1];
         }
@@ -224,16 +207,25 @@
       if (out.dispose) out.dispose();
     }
 
+    // ======== ACTUALIZAR BARRAS ========
     function actualizarBarras(pDog, pCat) {
       const p1 = Math.max(0, Math.min(1, pDog));
       const p2 = Math.max(0, Math.min(1, pCat));
-      document.getElementById('prob-dog').textContent = Math.round(p1*100) + '%';
-      document.getElementById('prob-cat').textContent = Math.round(p2*100) + '%';
-      document.getElementById('bar-dog').style.width = (p1*100) + '%';
-      document.getElementById('bar-cat').style.width = (p2*100) + '%';
+      document.getElementById('prob-dog').textContent = Math.round(p1 * 100) + '%';
+      document.getElementById('prob-cat').textContent = Math.round(p2 * 100) + '%';
+      document.getElementById('bar-dog').style.width = (p1 * 100) + '%';
+      document.getElementById('bar-cat').style.width = (p2 * 100) + '%';
     }
 
-    // ======== Init ========
+    // ======== LOOP PRINCIPAL ========
+    async function loop() {
+      if (!corriendo) return;
+      ctx.drawImage(video, 0, 0, tamano, tamano);
+      predecir();
+      setTimeout(loop, 150); // predicción cada 150 ms
+    }
+
+    // ======== INIT ========
     window.addEventListener('load', async () => {
       await cargarModelo(modelSelect.value);
     });
