@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+import tensorflow as tf
+import tensorflow_datasets as tfds
+from tensorflow import keras
+from tensorflow.keras import layers
+import tensorflowjs as tfjs
+
+IMG_SIZE = (100, 100)
+BATCH_SIZE = 32
+
+print("📦 Cargando dataset 'cats_vs_dogs'...")
+train_ds, val_ds = tfds.load(
+    "cats_vs_dogs",
+    split=["train[:80%]", "train[80%:]"],
+    as_supervised=True
+)
+
+def preprocess(image, label):
+    image = tf.image.resize(image, IMG_SIZE)
+    image = tf.image.rgb_to_grayscale(image)
+    image = tf.cast(image, tf.float32) / 255.0
+    return image, label
+
+data_augmentation = keras.Sequential([
+    layers.RandomFlip("horizontal"),
+    layers.RandomRotation(0.1),
+    layers.RandomZoom(0.15),
+    layers.RandomContrast(0.1),
+], name="augment")
+
+train_ds = (train_ds
+            .map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+            .map(lambda x,y: (data_augmentation(x, training=True), y), num_parallel_calls=tf.data.AUTOTUNE)
+            .batch(BATCH_SIZE)
+            .prefetch(tf.data.AUTOTUNE))
+
+val_ds = (val_ds
+          .map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+          .batch(BATCH_SIZE)
+          .prefetch(tf.data.AUTOTUNE))
+
+# === Modelo Denso (Functional) ===
+inputs = keras.Input(shape=(100, 100, 1), name="input")
+x = layers.Flatten(name="flatten")(inputs)
+x = layers.Dense(512, activation='relu', name="dense")(x)
+x = layers.Dropout(0.4, name="dropout")(x)
+x = layers.Dense(256, activation='relu', name="dense_1")(x)
+x = layers.Dropout(0.3, name="dropout_1")(x)
+x = layers.Dense(128, activation='relu', name="dense_2")(x)
+x = layers.Dropout(0.2, name="dropout_2")(x)
+x = layers.Dense(64, activation='relu', name="dense_3")(x)
+outputs = layers.Dense(1, activation='sigmoid', name="output")(x)
+model = keras.Model(inputs, outputs, name="DogCatDense")
+
+model.compile(optimizer=keras.optimizers.Adam(1e-4),
+              loss="binary_crossentropy",
+              metrics=["accuracy"])
+
+callbacks = [keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=5, restore_best_weights=True)]
+
+print("🚀 Entrenando modelo Denso...")
+history = model.fit(train_ds, validation_data=val_ds, epochs=40, callbacks=callbacks)
+
+print("💾 Exportando a TensorFlow.js (sin .h5)...")
+os.makedirs("web_model_dense", exist_ok=True)
+tfjs.converters.save_keras_model(model, "web_model_dense")
+print("✅ Listo: carpeta 'web_model_dense' con model.json + shards .bin")

@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --job-name=dog_cat_classifier
+#SBATCH --output=logs/output_%j.log
+#SBATCH --error=logs/error_%j.log
+#SBATCH --partition=cpu
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=06:00:00
+
+echo "=========================================="
+echo " CLASIFICADOR DE PERROS Y GATOS - SLURM "
+echo "=========================================="
+echo "Fecha de ejecución: $(date)"
+echo "Nodo: $(hostname)"
+echo "Directorio actual: $(pwd)"
+echo "------------------------------------------"
+
+# Crear carpeta de logs
+mkdir -p logs
+
+# Usar directamente el binario del entorno tfjs_ok
+PYTHON_BIN=/home/lcc_rn_05/.conda/envs/tfjs_ok/bin/python
+
+# Entrenamiento Denso
+echo "Entrenando modelo Denso (classifier_dense.py)..."
+$PYTHON_BIN classifier_dense.py
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+    echo "Error durante el entrenamiento del modelo Denso."
+    exit 1
+else
+    echo "Entrenamiento del modelo Denso completado."
+fi
+
+# Entrenamiento CNN
+echo "Entrenando modelo CNN (classifier_cnn.py)..."
+$PYTHON_BIN classifier_cnn.py
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+    echo "Error durante el entrenamiento del modelo CNN."
+    exit 1
+else
+    echo "Entrenamiento del modelo CNN completado."
+fi
+
+echo "------------------------------------------"
+echo "Ejecución completada con éxito."
+echo "Fecha de finalización: $(date)"
+echo "Logs guardados en: logs/output_*.log"
+echo "=========================================="
